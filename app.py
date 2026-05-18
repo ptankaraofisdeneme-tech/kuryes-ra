@@ -55,7 +55,6 @@ if SAYFA_SECIMI == "Kurye Giriş Ekranı":
             
             conn = sqlite3.connect(DB_NAME)
             cursor = conn.cursor()
-            # NOT: SQLite tablonuzda 'islem_yapan' sütunu yoksa DEFAULT NULL olarak kalacaktır.
             cursor.execute('''
                 INSERT INTO kurye_talepleri (sira_no, isim_soyisim, plaka, gelis_sebebi, tarih_saat)
                 VALUES (?, ?, ?, ?, ?)
@@ -85,7 +84,6 @@ else:
 
         bugun = datetime.now().strftime("%Y-%m-%d")
         conn = sqlite3.connect(DB_NAME)
-        # Tablodaki tüm sütunları çekiyoruz (yeni sütun dahil)
         df = pd.read_sql_query("SELECT * FROM kurye_talepleri WHERE tarih_saat LIKE ?", conn, params=(f"{bugun}%",))
         conn.close()
 
@@ -122,7 +120,6 @@ else:
                         st.write(f"**Geliş Nedeni:** {row['gelis_sebebi']} | **Saat:** {row['tarih_saat'].split()[1]}")
                     
                     with col_buton:
-                        # --- YENİ ÖZELLİK: İŞLEMİ ALAN PERSONEL SEÇİMİ ---
                         personel = st.selectbox(
                             "İşlemi Yapan:",
                             ["Sabri", "Batuhan", "Eren"],
@@ -133,9 +130,6 @@ else:
                             conn = sqlite3.connect(DB_NAME)
                             cursor = conn.cursor()
                             
-                            # SQL tablonuza 'islem_yapan' sütununu eklemeyi unutmayın kanka.
-                            # Eğer yoksa terminalde hata verebilir. Sütun ekleme komutu: 
-                            # ALTER TABLE kurye_talepleri ADD COLUMN islem_yapan TEXT;
                             try:
                                 cursor.execute("""
                                     UPDATE kurye_talepleri 
@@ -143,7 +137,6 @@ else:
                                     WHERE id = ?
                                 """, (personel, row['id']))
                             except sqlite3.OperationalError:
-                                # Eğer sütun henüz eklenmediyse hata vermesin diye fallback
                                 cursor.execute("UPDATE kurye_talepleri SET durum = 'Tamamlandı' WHERE id = ?", (row['id'],))
                                 
                             conn.commit()
@@ -155,23 +148,41 @@ else:
             # Günlük Geçmiş Tablosu Ekranı
             st.subheader("📋 Günlük Tüm Kayıtlar")
             
-            # DataFrame içinde yeni sütun varsa gösteriyoruz, yoksa hata almamak için kontrol ediyoruz
             gosterilecek_sutunlar = ["sira_no", "isim_soyisim", "plaka", "gelis_sebebi", "tarih_saat", "durum"]
             if "islem_yapan" in df.columns:
                 gosterilecek_sutunlar.append("islem_yapan")
                 
             st.dataframe(df[gosterilecek_sutunlar], use_container_width=True)
             
-            # --- EXCEL RAPORLAMA (YENİ SÜTUN DAHİL) ---
+            # --- TERTEMİZ EXCEL RAPORLAMA (PLAKA VE İSİM FORMATLANDI) ---
             st.write("---")
             st.subheader("📥 Günlük Raporu İndir")
             
+            # Excel için veriyi kopyalıyoruz
             if "islem_yapan" in df.columns:
                 excel_df = df[["sira_no", "isim_soyisim", "plaka", "gelis_sebebi", "tarih_saat", "durum", "islem_yapan"]].copy()
                 excel_df.columns = ["Sıra No", "Ad Soyad", "Plaka", "Geliş Sebebi", "İşlem Tarihi", "Durum", "İşlem Yapan"]
             else:
                 excel_df = df[["sira_no", "isim_soyisim", "plaka", "gelis_sebebi", "tarih_saat", "durum"]].copy()
                 excel_df.columns = ["Sıra No", "Ad Soyad", "Plaka", "Geliş Sebebi", "İşlem Tarihi", "Durum"]
+            
+            # --- TÜRKÇE KARAKTERE UYUMLU BÜYÜK HARF FONKSİYONU ---
+            def turkce_buyuk_harf(metin):
+                if not isinstance(metin, str):
+                    return metin
+                return metin.replace('i', 'İ').replace('ı', 'I').upper()
+
+            # --- PLAKA BİRLEŞTİRME VE BÜYÜK HARF YAPMA FONKSİYONU ---
+            def plaka_temizle(plaka):
+                if not isinstance(plaka, str):
+                    return plaka
+                # Boşlukları kaldır ve Türkçe karakter kurallarına göre büyüt
+                temiz_plaka = plaka.replace(" ", "")
+                return turkce_buyuk_harf(temiz_plaka)
+
+            # Excel verilerine formatı uyguluyoruz
+            excel_df["Ad Soyad"] = excel_df["Ad Soyad"].apply(turkce_buyuk_harf)
+            excel_df["Plaka"] = excel_df["Plaka"].apply(plaka_temizle)
             
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
