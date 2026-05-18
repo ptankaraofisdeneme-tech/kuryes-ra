@@ -53,11 +53,11 @@ if SAYFA_SECIMI == "Kurye Giriş Ekranı":
             su_an = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             nihai_sebep = detay if sebep == "Diğer" else sebep
             
-            # Veritabanına kaydet
+            # Veritabanına kaydet (Hatalı text_saat kısmı temizlendi kanka)
             conn = sqlite3.connect(DB_NAME)
             cursor = conn.cursor()
             cursor.execute('''
-                INSERT INTO kurye_talepleri (sira_no, isim_soyisim, plaka, gelis_sebebi, text_saat, tarih_saat)
+                INSERT INTO kurye_talepleri (sira_no, isim_soyisim, plaka, gelis_sebebi, tarih_saat)
                 VALUES (?, ?, ?, ?, ?)
             ''', (sira_numarasi, isim.strip(), plaka.strip().upper(), nihai_sebep, su_an))
             conn.commit()
@@ -78,7 +78,7 @@ else:
     if st.button("🔄 Listeyi Yenile"):
         st.rerun()
 
-    # Bugünün tarihini al ve bugünkü verileri çek (Hata giderilen güvenli sorgu)
+    # Bugünün tarihini al ve bugünkü verileri çek (Güvenli ve hatasız sorgu)
     bugun = datetime.now().strftime("%Y-%m-%d")
     conn = sqlite3.connect(DB_NAME)
     df = pd.read_sql_query("SELECT * FROM kurye_talepleri WHERE tarih_saat LIKE ?", conn, params=(f"{bugun}%",))
@@ -139,7 +139,7 @@ else:
         st.write("---")
         st.subheader("📥 Günlük Raporu İndir")
         
-        # Excel için veriyi kopyalayıp başlıkları jilet gibi yapıyoruz
+        # Excel için veriyi kopyalayıp başlıkları düzenliyoruz
         excel_df = df[["sira_no", "isim_soyisim", "plaka", "gelis_sebebi", "tarih_saat", "durum"]].copy()
         excel_df.columns = ["Sıra No", "Ad Soyad", "Plaka", "Geliş Sebebi", "İşlem Tarihi", "Durum"]
         
