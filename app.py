@@ -57,7 +57,7 @@ if SAYFA_SECIMI == "Kurye Giriş Ekranı":
             conn = sqlite3.connect(DB_NAME)
             cursor = conn.cursor()
             cursor.execute('''
-                INSERT INTO kurye_talepleri (sira_no, isim_soyisim, plaka, gelis_sebebi, tarih_saat)
+                INSERT INTO kurye_talepleri (sira_no, isim_soyisim, plaka, gelis_sebebi, text_saat, tarih_saat)
                 VALUES (?, ?, ?, ?, ?)
             ''', (sira_numarasi, isim.strip(), plaka.strip().upper(), nihai_sebep, su_an))
             conn.commit()
@@ -78,7 +78,91 @@ else:
     if st.button("🔄 Listeyi Yenile"):
         st.rerun()
 
-    # Bugünün tarihini al ve bugünkü verileri çek
+    # Bugünün tarihini al ve bugünkü verileri çek (Hata giderilen güvenli sorgu)
     bugun = datetime.now().strftime("%Y-%m-%d")
     conn = sqlite3.connect(DB_NAME)
-    df = pd.read_sql_query(f"SELECT * FROM kurye_talepleri WHERE tarih_saat LIKE '{bugun}%
+    df = pd.read_sql_query("SELECT * FROM kurye_talepleri WHERE tarih_saat LIKE ?", conn, params=(f"{bugun}%",))
+    conn.close()
+
+    if df.empty:
+        st.info("Bugün henüz sıra almış kurye bulunmuyor kanka.")
+    else:
+        # Üst Özet İstatistik Kutuları
+        bekleyen_sayisi = len(df[df['durum'] == 'Bekliyor'])
+        tamamlanan_sayisi = len(df[df['durum'] == 'Tamamlandı'])
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown(f"<div class='metric-box'><h3>Toplam Gelen</h3><h2>{len(df)}</h2></div>", unsafe_allow_html=True)
+        with col2:
+            st.markdown(f"<div class='metric-box' style='color: #FF4B4B;'><h3>Bekleyen Sıra</h3><h2>{bekleyen_sayisi}</h2></div>", unsafe_allow_html=True)
+        with col3:
+            st.markdown(f"<div class='metric-box' style='color: #00CC66;'><h3>Tamamlanan</h3><h2>{tamamlanan_sayisi}</h2></div>", unsafe_allow_html=True)
+        
+        st.write("---")
+
+        # Sıra Yönetim Alanı
+        st.subheader("⏳ Bekleyen Talepler ve İşlem Yapma")
+        bekleyen_df = df[df['durum'] == 'Bekliyor']
+
+        if bekleyen_df.empty:
+            st.success("Harika! Bekleyen hiçbir kurye yok. 😎")
+        else:
+            # Bekleyen kuryeleri butonlarla listele
+            for index, row in bekleyen_df.iterrows():
+                col_sira, col_bilgi, col_buton = st.columns([1, 4, 2])
+                
+                with col_sira:
+                    st.subheader(f"🛑 {row['sira_no']}")
+                
+                with col_bilgi:
+                    st.write(f"**Kurye:** {row['isim_soyisim']} ({row['plaka']})")
+                    st.write(f"**Geliş Nedeni:** {row['gelis_sebebi']} | **Saat:** {row['tarih_saat'].split()[1]}")
+                
+                with col_buton:
+                    # Durumu "Tamamlandı" olarak güncelleme butonu
+                    if st.button(f"✓ Tamamla", key=f"btn_{row['id']}"):
+                        conn = sqlite3.connect(DB_NAME)
+                        cursor = conn.cursor()
+                        cursor.execute("UPDATE kurye_talepleri SET durum = 'Tamamlandı' WHERE id = ?", (row['id'],))
+                        conn.commit()
+                        conn.close()
+                        st.success(f"{row['sira_no']} numaralı işlem tamamlandı!")
+                        st.rerun()
+                st.write("---")
+
+        # Günlük Geçmiş Tablosu Ekranı
+        st.subheader("📋 Günlük Tüm Kayıtlar")
+        st.dataframe(df[["sira_no", "isim_soyisim", "plaka", "gelis_sebebi", "tarih_saat", "durum"]], use_container_width=True)
+        
+        # --- TÜRKÇE KARAKTER VE SÜTUN SORUNU DÜZELTİLMİŞ EXCEL RAPORLAMA ---
+        st.write("---")
+        st.subheader("📥 Günlük Raporu İndir")
+        
+        # Excel için veriyi kopyalayıp başlıkları jilet gibi yapıyoruz
+        excel_df = df[["sira_no", "isim_soyisim", "plaka", "gelis_sebebi", "tarih_saat", "durum"]].copy()
+        excel_df.columns = ["Sıra No", "Ad Soyad", "Plaka", "Geliş Sebebi", "İşlem Tarihi", "Durum"]
+        
+        # Arka planda gerçek bir Excel (.xlsx) dosyası oluşturma işlemi
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            excel_df.to_excel(writer, index=False, sheet_name='Günlük Kurye Raporu')
+            
+            # Sütun genişliklerini içeriğe göre otomatik olarak genişletiyoruz
+            workbook = writer.book
+            worksheet = writer.sheets['Günlük Kurye Raporu']
+            
+            for col in worksheet.columns:
+                max_len = max(len(str(cell.value or '')) for cell in col)
+                col_letter = col[0].column_letter
+                worksheet.column_dimensions[col_letter].width = max(max_len + 4, 12)
+        
+        excel_data = output.getvalue()
+        
+        # İndirme Butonu
+        st.download_button(
+            label="📊 Profesyonel Excel Raporu İndir (.xlsx)",
+            data=excel_data,
+            file_name=f"kurye_raporu_{bugun}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
