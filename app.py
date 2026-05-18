@@ -69,10 +69,10 @@ if SAYFA_SECIMI == "Kurye Giriş Ekranı":
             conn.commit()
             conn.close()
             
-            # Kurye ekranında numarasını göster
+            # Kurye ekranında numarasını göster (Seslenme uyarısı eklendi)
             st.markdown('<p class="success-text">🎉 Kaydınız alındı! Sıra Numaranız:</p>', unsafe_allow_html=True)
             st.markdown(f'<p class="big-font">{sira_numarasi}</p>', unsafe_allow_html=True)
-            st.info("💡 Lütfen içerideki ekrandan sıranızı takip ediniz.")
+            st.warning("📢 Lütfen sıranız gelene kadar bekleyiniz, adınızla sesleneceğiz.")
 
 # ==========================================
 # 2. SAYFA: OFİS YÖNETİM PANELİ (İçerideki Personelin Göreceği Ekran)
