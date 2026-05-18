@@ -55,6 +55,7 @@ if SAYFA_SECIMI == "Kurye Giriş Ekranı":
             
             conn = sqlite3.connect(DB_NAME)
             cursor = conn.cursor()
+            # NOT: SQLite tablonuzda 'islem_yapan' sütunu yoksa DEFAULT NULL olarak kalacaktır.
             cursor.execute('''
                 INSERT INTO kurye_talepleri (sira_no, isim_soyisim, plaka, gelis_sebebi, tarih_saat)
                 VALUES (?, ?, ?, ?, ?)
@@ -72,8 +73,6 @@ if SAYFA_SECIMI == "Kurye Giriş Ekranı":
 else:
     st.title("📊 Ofis Sıra Yönetim Paneli")
     
-    # Filo personeli için basit şifre kontrolü
-    # Şifreyi aşağıdan değiştirebilirsin kanka, şu anlık 'filo123' yaptım.
     girilen_sifre = st.text_input("Yönetici Şifresini Giriniz:", type="password")
     
     if girilen_sifre != "filo123":
@@ -81,20 +80,18 @@ else:
     else:
         st.success("🔓 Giriş Başarılı. Yönetim Paneli Aktif.")
         
-        # Sayfayı manuel yenilemek için buton
         if st.button("🔄 Listeyi Yenile"):
             st.rerun()
 
-        # Bugünün tarihini al ve bugünkü verileri çek
         bugun = datetime.now().strftime("%Y-%m-%d")
         conn = sqlite3.connect(DB_NAME)
+        # Tablodaki tüm sütunları çekiyoruz (yeni sütun dahil)
         df = pd.read_sql_query("SELECT * FROM kurye_talepleri WHERE tarih_saat LIKE ?", conn, params=(f"{bugun}%",))
         conn.close()
 
         if df.empty:
             st.info("Bugün henüz sıra almış kurye bulunmuyor kanka.")
         else:
-            # Üst Özet İstatistik Kutuları
             bekleyen_sayisi = len(df[df['durum'] == 'Bekliyor'])
             tamamlanan_sayisi = len(df[df['durum'] == 'Tamamlandı'])
             
@@ -108,7 +105,6 @@ else:
             
             st.write("---")
 
-            # Sıra Yönetim Alanı
             st.subheader("⏳ Bekleyen Talepler ve İşlem Yapma")
             bekleyen_df = df[df['durum'] == 'Bekliyor']
 
@@ -126,26 +122,56 @@ else:
                         st.write(f"**Geliş Nedeni:** {row['gelis_sebebi']} | **Saat:** {row['tarih_saat'].split()[1]}")
                     
                     with col_buton:
+                        # --- YENİ ÖZELLİK: İŞLEMİ ALAN PERSONEL SEÇİMİ ---
+                        personel = st.selectbox(
+                            "İşlemi Yapan:",
+                            ["Sabri", "Batuhan", "Eren"],
+                            key=f"pers_{row['id']}"
+                        )
+                        
                         if st.button(f"✓ Tamamla", key=f"btn_{row['id']}"):
                             conn = sqlite3.connect(DB_NAME)
                             cursor = conn.cursor()
-                            cursor.execute("UPDATE kurye_talepleri SET durum = 'Tamamlandı' WHERE id = ?", (row['id'],))
+                            
+                            # SQL tablonuza 'islem_yapan' sütununu eklemeyi unutmayın kanka.
+                            # Eğer yoksa terminalde hata verebilir. Sütun ekleme komutu: 
+                            # ALTER TABLE kurye_talepleri ADD COLUMN islem_yapan TEXT;
+                            try:
+                                cursor.execute("""
+                                    UPDATE kurye_talepleri 
+                                    SET durum = 'Tamamlandı', islem_yapan = ? 
+                                    WHERE id = ?
+                                """, (personel, row['id']))
+                            except sqlite3.OperationalError:
+                                # Eğer sütun henüz eklenmediyse hata vermesin diye fallback
+                                cursor.execute("UPDATE kurye_talepleri SET durum = 'Tamamlandı' WHERE id = ?", (row['id'],))
+                                
                             conn.commit()
                             conn.close()
-                            st.success(f"{row['sira_no']} numaralı işlem tamamlandı!")
+                            st.success(f"{row['sira_no']} numaralı işlem {personel} tarafından tamamlandı!")
                             st.rerun()
                     st.write("---")
 
             # Günlük Geçmiş Tablosu Ekranı
             st.subheader("📋 Günlük Tüm Kayıtlar")
-            st.dataframe(df[["sira_no", "isim_soyisim", "plaka", "gelis_sebebi", "tarih_saat", "durum"]], use_container_width=True)
             
-            # --- EXCEL RAPORLAMA ---
+            # DataFrame içinde yeni sütun varsa gösteriyoruz, yoksa hata almamak için kontrol ediyoruz
+            gosterilecek_sutunlar = ["sira_no", "isim_soyisim", "plaka", "gelis_sebebi", "tarih_saat", "durum"]
+            if "islem_yapan" in df.columns:
+                gosterilecek_sutunlar.append("islem_yapan")
+                
+            st.dataframe(df[gosterilecek_sutunlar], use_container_width=True)
+            
+            # --- EXCEL RAPORLAMA (YENİ SÜTUN DAHİL) ---
             st.write("---")
             st.subheader("📥 Günlük Raporu İndir")
             
-            excel_df = df[["sira_no", "isim_soyisim", "plaka", "gelis_sebebi", "tarih_saat", "durum"]].copy()
-            excel_df.columns = ["Sıra No", "Ad Soyad", "Plaka", "Geliş Sebebi", "İşlem Tarihi", "Durum"]
+            if "islem_yapan" in df.columns:
+                excel_df = df[["sira_no", "isim_soyisim", "plaka", "gelis_sebebi", "tarih_saat", "durum", "islem_yapan"]].copy()
+                excel_df.columns = ["Sıra No", "Ad Soyad", "Plaka", "Geliş Sebebi", "İşlem Tarihi", "Durum", "İşlem Yapan"]
+            else:
+                excel_df = df[["sira_no", "isim_soyisim", "plaka", "gelis_sebebi", "tarih_saat", "durum"]].copy()
+                excel_df.columns = ["Sıra No", "Ad Soyad", "Plaka", "Geliş Sebebi", "İşlem Tarihi", "Durum"]
             
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
