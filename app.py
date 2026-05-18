@@ -10,7 +10,7 @@ veritabanini_kur()
 
 st.set_page_config(page_title="Ofis Sıra Sistemi", page_icon="🛵", layout="wide")
 
-# CSS ile arayüzü özelleştirelim (Büyük sıra numarası ve özet kutuları için)
+# CSS ile arayüzü özelleştirme (Büyük sıra numarası ve özet kutuları için)
 st.markdown("""
     <style>
     .big-font { font-size:60px !important; font-weight: bold; color: #FF4B4B; text-align: center; }
@@ -29,25 +29,22 @@ if SAYFA_SECIMI == "Kurye Giriş Ekranı":
     st.title("🛵 Ofis Giriş & Sıra Sistemi")
     st.write("Lütfen aşağıdaki bilgileri doldurarak sıra numaranızı alınız.")
 
-    # Dinamik görünüm için seçim kutularını form dışına alıp senkronize ediyoruz kanka
-    isim = st.text_input("Adınız Soyadınız:", placeholder="Örn: Ahmet Yılmaz")
-    plaka = st.text_input("Plakanız:", placeholder="Örn: 34 ABC 123")
-    
-    sebep = st.selectbox(
-        "Geliş Sebebiniz:",
-        ["İş Başlangıcı", "İş Çıkışı", "Hakediş İşlemleri", "Ekipman Alım/Teslim", "Diğer"]
-    )
-    
-    # "Diğer" seçildiğinde anında beliren dinamik alan (Form dışında olduğu için anında çalışır)
-    detay = ""
-    if sebep == "Diğer":
-        detay = st.text_input("Lütfen geliş sebebinizi kısaca yazın:")
-
-    # Kaydetme işlemini güvenli bir form butonuyla sarmallıyoruz
+    # Çift kaydı engellemek için tüm girdileri tek bir form bloğu içerisine alıyoruz kanka
     with st.form("kurye_onay_formu", clear_on_submit=True):
+        isim = st.text_input("Adınız Soyadınız:", placeholder="Örn: Ahmet Yılmaz")
+        plaka = st.text_input("Plakanız:", placeholder="Örn: 34 ABC 123")
+        
+        sebep = st.selectbox(
+            "Geliş Sebebiniz:",
+            ["İş Başlangıcı", "İş Çıkışı", "Hakediş İşlemleri", "Ekipman Alım/Teslim", "Diğer"]
+        )
+        
+        detay = st.text_input("Geliş Sebebi 'Diğer' ise lütfen buraya açıklama yazınız:")
+
         st.write("Girdiğiniz bilgilerin doğruluğundan eminseniz lütfen aşağıdaki butona basarak onaylayın.")
         submit_button = st.form_submit_button("Sıra Numarası Al 🚀")
 
+    # Form gönderildikten sonra tetiklenen ana mantık
     if submit_button:
         if isim.strip() == "" or plaka.strip() == "":
             st.error("⚠️ Lütfen Ad Soyad ve Plaka alanlarını boş bırakmayınız!")
@@ -69,7 +66,7 @@ if SAYFA_SECIMI == "Kurye Giriş Ekranı":
             conn.commit()
             conn.close()
             
-            # Kurye ekranında numarasını göster (Seslenme uyarısı eklendi)
+            # Kurye ekranında başarı mesajı ve sıra numarasını göster
             st.markdown('<p class="success-text">🎉 Kaydınız alındı! Sıra Numaranız:</p>', unsafe_allow_html=True)
             st.markdown(f'<p class="big-font">{sira_numarasi}</p>', unsafe_allow_html=True)
             st.warning("📢 Lütfen sıranız gelene kadar bekleyiniz, adınızla sesleneceğiz.")
@@ -114,7 +111,7 @@ else:
         if bekleyen_df.empty:
             st.success("Harika! Bekleyen hiçbir kurye yok. 😎")
         else:
-            # Bekleyen kuryeleri butonlarla listele
+            # Bekleyen kuryeleri dinamik butonlarla listeleme
             for index, row in bekleyen_df.iterrows():
                 col_sira, col_bilgi, col_buton = st.columns([1, 4, 2])
                 
