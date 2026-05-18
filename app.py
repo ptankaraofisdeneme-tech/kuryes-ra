@@ -56,7 +56,6 @@ if SAYFA_SECIMI == "Kurye Giriş Ekranı":
             
             conn = sqlite3.connect(DB_NAME)
             cursor = conn.cursor()
-            # Varsayılan durum: 'Bekliyor'
             cursor.execute('''
                 INSERT INTO kurye_talepleri (sira_no, isim_soyisim, plaka, gelis_sebebi, tarih_saat, durum)
                 VALUES (?, ?, ?, ?, ?, 'Bekliyor')
@@ -92,7 +91,6 @@ else:
         if df.empty:
             st.info("Bugün henüz sıra almış kurye bulunmuyor kanka.")
         else:
-            # İstatistikleri dinamik durumlara göre güncelledik
             bekleyen_sayisi = len(df[df['durum'] == 'Bekliyor'])
             islemde_sayisi = len(df[df['durum'] == 'İşlemde'])
             tamamlanan_sayisi = len(df[df['durum'] == 'Tamamlandı'])
@@ -109,10 +107,7 @@ else:
             
             st.write("---")
 
-            # --- SIRA YÖNETİM ALANI ---
             st.subheader("⏳ Güncel Sıra Akışı (Bekleyenler ve İşlemdekiler)")
-            
-            # Hem 'Bekliyor' hem de 'İşlemde' olanları burada yöneteceğiz
             aktif_df = df[df['durum'].isin(['Bekliyor', 'İşlemde'])]
 
             if aktif_df.empty:
@@ -127,7 +122,6 @@ else:
                             st.markdown('<span class="status-badge" style="background-color: #FF4B4B; color: white;">Bekliyor</span>', unsafe_allow_html=True)
                         else:
                             st.subheader(f"⚡ {row['sira_no']}")
-                            # İşleme alan personelin adını badge üzerinde gösteriyoruz kanka
                             personel_adi = row.get('islem_yapan', 'Bilinmeyen') if row.get('islem_yapan') else "Personel"
                             st.markdown(f'<span class="status-badge" style="background-color: #FFA500; color: black;">👨‍💻 {personel_adi} İşlemde</span>', unsafe_allow_html=True)
                     
@@ -136,7 +130,6 @@ else:
                         st.write(f"**Geliş Nedeni:** {row['gelis_sebebi']} | **Saat:** {row['tarih_saat'].split()[1]}")
                     
                     with col_eylem:
-                        # Eğer kurye hala BEKLİYORSA, onu sadece bir personel İŞLEME ALABİLİR veya İPTAL edebilir
                         if row['durum'] == 'Bekliyor':
                             personel_secimi = st.selectbox(
                                 "İşlemi Üstlenen:",
@@ -149,7 +142,11 @@ else:
                                 if st.button(f"📢 Çağır / İşleme Al", key=f"cagir_{row['id']}", use_container_width=True):
                                     conn = sqlite3.connect(DB_NAME)
                                     cursor = conn.cursor()
-                                    cursor.execute("UPDATE kurye_talepleri SET durum = 'İşlemde', islem_yapan = ? WHERE id = ?", (personel_secimi, row['id']))
+                                    # BURAYA GÜVENLİK KORUMASI EKLENDİ KANKA (OperationalError Engellendi)
+                                    try:
+                                        cursor.execute("UPDATE kurye_talepleri SET durum = 'İşlemde', islem_yapan = ? WHERE id = ?", (personel_secimi, row['id']))
+                                    except sqlite3.OperationalError:
+                                        cursor.execute("UPDATE kurye_talepleri SET durum = 'İşlemde' WHERE id = ?", (row['id'],))
                                     conn.commit()
                                     conn.close()
                                     st.rerun()
@@ -162,7 +159,6 @@ else:
                                     conn.close()
                                     st.rerun()
                         
-                        # Eğer kurye zaten İŞLEMDEYSE, artık sadece o işlemi TAMAMLAMA butonu aktif olur
                         elif row['durum'] == 'İşlemde':
                             st.write(f"👉 Bu işlemle şu an **{row.get('islem_yapan', 'Biri')}** ilgileniyor.")
                             if st.button(f"✓ İşlemi Tamamla", key=f"tamam_{row['id']}", type="primary", use_container_width=True):
@@ -183,7 +179,7 @@ else:
                 gosterilecek_sutunlar.append("islem_yapan")
             st.dataframe(df[gosterilecek_sutunlar], use_container_width=True)
             
-            # --- TERTEMİZ EXCEL RAPORLAMA (PLAKA VE İSİM FORMATLANDI) ---
+            # --- EXCEL RAPORLAMA ---
             st.write("---")
             st.subheader("📥 Günlük Raporu İndir")
             
@@ -225,3 +221,17 @@ else:
                 file_name=f"kurye_raporu_{bugun}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
+
+            # ---- CANLI SİSTEMDE TABLOYA SÜTUN EKLEME BUTONU (SADECE 1 KERE BASILACAK) ----
+            st.write("---")
+            st.subheader("⚙️ Canlı Sistem Güncelleme")
+            if st.button("🛠️ Veritabanına 'İşlem Yapan' Sütununu Tanımla"):
+                conn = sqlite3.connect(DB_NAME)
+                cursor = conn.cursor()
+                try:
+                    cursor.execute("ALTER TABLE kurye_talepleri ADD COLUMN islem_yapan TEXT")
+                    conn.commit()
+                    st.success("Sütun başarıyla eklendi! Artık sisteminiz tamamen güncel kanka.")
+                except sqlite3.OperationalError:
+                    st.info("Bu sütun zaten veritabanınızda mevcut kanka, işlem yapmaya gerek yok.")
+                conn.close()
