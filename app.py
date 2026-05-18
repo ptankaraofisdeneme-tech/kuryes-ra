@@ -29,31 +29,37 @@ if SAYFA_SECIMI == "Kurye Giriş Ekranı":
     st.title("🛵 Ofis Giriş & Sıra Sistemi")
     st.write("Lütfen aşağıdaki bilgileri doldurarak sıra numaranızı alınız.")
 
-    with st.form("kurye_giris_formu", clear_on_submit=True):
-        isim = st.text_input("Adınız Soyadınız:", placeholder="Örn: Ahmet Yılmaz")
-        plaka = st.text_input("Plakanız:", placeholder="Örn: 34 ABC 123")
-        
-        sebep = st.selectbox(
-            "Geliş Sebebiniz:",
-            ["İş Başlangıcı", "İş Çıkışı", "Hakediş İşlemleri", "Ekipman Alım/Teslim", "Diğer"]
-        )
-        
-        detay = ""
-        if sebep == "Diğer":
-            detay = st.text_input("Lütfen geliş sebebinizi kısaca yazın:")
+    # Dinamik görünüm için seçim kutularını form dışına alıp senkronize ediyoruz kanka
+    isim = st.text_input("Adınız Soyadınız:", placeholder="Örn: Ahmet Yılmaz")
+    plaka = st.text_input("Plakanız:", placeholder="Örn: 34 ABC 123")
+    
+    sebep = st.selectbox(
+        "Geliş Sebebiniz:",
+        ["İş Başlangıcı", "İş Çıkışı", "Hakediş İşlemleri", "Ekipman Alım/Teslim", "Diğer"]
+    )
+    
+    # "Diğer" seçildiğinde anında beliren dinamik alan (Form dışında olduğu için anında çalışır)
+    detay = ""
+    if sebep == "Diğer":
+        detay = st.text_input("Lütfen geliş sebebinizi kısaca yazın:")
 
-        submit_button = st.form_submit_button("Sıra Numarası Al")
+    # Kaydetme işlemini güvenli bir form butonuyla sarmallıyoruz
+    with st.form("kurye_onay_formu", clear_on_submit=True):
+        st.write("Girdiğiniz bilgilerin doğruluğundan eminseniz lütfen aşağıdaki butona basarak onaylayın.")
+        submit_button = st.form_submit_button("Sıra Numarası Al 🚀")
 
     if submit_button:
         if isim.strip() == "" or plaka.strip() == "":
             st.error("⚠️ Lütfen Ad Soyad ve Plaka alanlarını boş bırakmayınız!")
+        elif sebep == "Diğer" and detay.strip() == "":
+            st.error("⚠️ Lütfen geliş sebebinizi kısaca belirtiniz!")
         else:
             # Düz sıra numarasını üret (001, 002...)
             sira_numarasi = yeni_sira_no_uret()
             su_an = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            nihai_sebep = detay if sebep == "Diğer" else sebep
+            nihai_sebep = detay.strip() if sebep == "Diğer" else sebep
             
-            # Veritabanına kaydet (Hatalı text_saat kısmı temizlendi kanka)
+            # Veritabanına kaydet
             conn = sqlite3.connect(DB_NAME)
             cursor = conn.cursor()
             cursor.execute('''
@@ -63,7 +69,7 @@ if SAYFA_SECIMI == "Kurye Giriş Ekranı":
             conn.commit()
             conn.close()
             
-            # Kuryeye ekranında numarasını göster
+            # Kurye ekranında numarasını göster
             st.markdown('<p class="success-text">🎉 Kaydınız alındı! Sıra Numaranız:</p>', unsafe_allow_html=True)
             st.markdown(f'<p class="big-font">{sira_numarasi}</p>', unsafe_allow_html=True)
             st.info("💡 Lütfen içerideki ekrandan sıranızı takip ediniz.")
@@ -78,7 +84,7 @@ else:
     if st.button("🔄 Listeyi Yenile"):
         st.rerun()
 
-    # Bugünün tarihini al ve bugünkü verileri çek (Güvenli ve hatasız sorgu)
+    # Bugünün tarihini al ve bugünkü verileri çek
     bugun = datetime.now().strftime("%Y-%m-%d")
     conn = sqlite3.connect(DB_NAME)
     df = pd.read_sql_query("SELECT * FROM kurye_talepleri WHERE tarih_saat LIKE ?", conn, params=(f"{bugun}%",))
